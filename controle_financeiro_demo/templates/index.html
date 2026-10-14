@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meu Controle — Finanças pessoais</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark">M</span><span>meu<span class="brand-light">controle</span></span></a>
+      <p class="nav-label">MENU PRINCIPAL</p>
+      <a class="nav-link active" href="#dashboard"><span>▦</span> Visão geral</a>
+      <a class="nav-link" href="#transactions"><span>↕</span> Movimentações</a>
+      <a class="nav-link" href="#budgets"><span>◴</span> Orçamentos</a>
+      <a class="nav-link" href="#goals"><span>◎</span> Minhas metas</a>
+      <div class="sidebar-note"><div class="note-icon">✦</div><strong>Pequenos passos.</strong><p>Organizar hoje ajuda você a realizar seus planos amanhã.</p></div>
+      <div class="sidebar-footer"><span class="avatar">D</span><div><strong>Demo local</strong><small>Projeto de estudos</small></div></div>
+    </aside>
+
+    <main class="main-content" id="dashboard">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">SUAS FINANÇAS EM UM SÓ LUGAR</p>
+          <h1>Visão geral</h1>
+          <p class="subheading">
+            Acompanhe seu dinheiro e planeje seus próximos passos.
+          </p>
+        </div>
+    
+        <div class="header-actions">
+          <div class="month-pill">▦ &nbsp; {{ month }}</div>
+    
+          <button class="btn btn-expense" type="button"
+                  onclick="openTransactionModal('expense')">
+            − Despesa
+          </button>
+    
+          <button class="btn btn-income" type="button"
+                  onclick="openTransactionModal('income')">
+            + Receita
+          </button>
+    
+          <button class="btn btn-outline" type="button"
+                  onclick="openBalanceModal()">
+            Ajustar saldo
+          </button>
+        </div>
+      </header>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="flash-list">{% for category, message in messages %}</div>{% endfor %}<div class="flash {{ category }}">{{ message }}</div>{% endif %}
+      {% endwith %}
+
+      <section class="summary-grid">
+        <article class="summary-card balance-card"><div class="card-top"><span>Saldo do mês</span><span class="card-icon">↗</span></div><div class="summary-value">{{ balance|brl }}</div><div class="card-foot">Receitas menos despesas registradas</div></article>
+        <article class="summary-card"><div class="card-top"><span>Receitas</span><span class="card-icon green-icon">＋</span></div><div class="summary-value">{{ income|brl }}</div><div class="card-foot"><span class="dot green"></span> Entradas neste mês</div></article>
+        <article class="summary-card"><div class="card-top"><span>Despesas</span><span class="card-icon orange-icon">−</span></div><div class="summary-value">{{ expenses|brl }}</div><div class="card-foot"><span class="dot orange"></span> Saídas neste mês</div></article>
+        <article class="summary-card"><div class="card-top"><span>Orçamento usado</span><span class="card-icon purple-icon">◴</span></div><div class="summary-value">{{ ((total_budget_spent / total_budget * 100)|round|int) if total_budget else 0 }}<small>%</small></div><div class="card-foot">{{ total_budget_spent|brl }} de {{ total_budget|brl }}</div></article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel" id="budgets">
+          <div class="panel-heading"><div><h2>Orçamento por categoria</h2><p>Veja quanto ainda pode gastar este mês.</p></div><span class="heading-icon">◴</span></div>
+          {% for budget in budgets %}
+            {% set percent = ((budget.spent_cents / budget.limit_cents * 100)|round|int) if budget.limit_cents else 0 %}
+            <div class="budget-row"><div class="budget-label"><strong>{{ budget.category }}</strong><span>{{ budget.spent_cents|brl }} <em>/ {{ budget.limit_cents|brl }}</em></span></div><div class="progress-track"><div class="progress-fill {% if percent >= 100 %}danger{% elif percent >= 80 %}warning{% endif %}" style="width: {{ [percent, 100]|min }}%"></div></div><div class="budget-foot"><span class="{% if percent >= 100 %}text-danger{% elif percent >= 80 %}text-warning{% endif %}">{% if percent >= 100 %}Limite ultrapassado em {{ (budget.spent_cents-budget.limit_cents)|brl }}{% elif percent >= 80 %}Atenção: {{ percent }}% utilizado{% else %}{{ percent }}% utilizado{% endif %}</span><span>{% if budget.spent_cents < budget.limit_cents %}Restam {{ (budget.limit_cents-budget.spent_cents)|brl }}{% endif %}</span></div></div>
+          {% else %}<p class="empty-state">Você ainda não cadastrou orçamentos.</p>{% endfor %}
+          <details class="inline-form"><summary>＋ Adicionar ou atualizar orçamento</summary><form action="{{ url_for('add_budget') }}" method="post" class="form-grid"><label>Categoria<select name="category" required>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></label><label>Limite (R$)<input name="limit" inputmode="decimal" placeholder="250,00" required></label><label>Mês<input type="month" name="month" value="{{ month }}" required></label><button class="btn btn-dark" type="submit">Salvar orçamento</button></form></details>
+        </article>
+
+        <article class="panel" id="goals">
+          <div class="panel-heading"><div><h2>Metas financeiras</h2><p>Um pouco de cada vez faz diferença.</p></div><span class="heading-icon">◎</span></div>
+          {% for goal in goals %}
+            {% set percent = ((goal.saved_cents / goal.target_cents * 100)|round|int) if goal.target_cents else 0 %}
+            <div class="goal-card"><div class="goal-symbol">✧</div><div class="goal-content"><div class="goal-title"><strong>{{ goal.name }}</strong><span>{{ [percent, 100]|min }}%</span></div><div class="progress-track"><div class="progress-fill goal-fill" style="width: {{ [percent, 100]|min }}%"></div></div><div class="goal-amounts"><strong>{{ goal.saved_cents|brl }}</strong><span>de {{ goal.target_cents|brl }}</span></div><p class="goal-remaining">{% if goal.saved_cents >= goal.target_cents %}Meta alcançada! 🎉{% else %}Faltam {{ (goal.target_cents-goal.saved_cents)|brl }}{% endif %}</p><form action="{{ url_for('contribute_goal', goal_id=goal.id) }}" method="post" class="contribute-form"><input name="amount" inputmode="decimal" placeholder="Valor (ex.: 50,00)" aria-label="Valor da contribuição" required><button class="btn btn-light" type="submit">＋ Guardar</button></form></div></div>
+          {% else %}<p class="empty-state">Crie sua primeira meta financeira.</p>{% endfor %}
+          <details class="inline-form"><summary>＋ Criar nova meta</summary><form action="{{ url_for('add_goal') }}" method="post" class="form-grid"><label>Nome da meta<input name="name" placeholder="Ex.: Reserva de emergência" required></label><label>Valor desejado (R$)<input name="target" inputmode="decimal" placeholder="2000,00" required></label><label>Já guardado (R$)<input name="saved" inputmode="decimal" placeholder="0,00"></label><label>Prazo (opcional)<input type="date" name="deadline"></label><button class="btn btn-dark" type="submit">Criar meta</button></form></details>
+        </article>
+      </section>
+
+      <section class="panel transactions-panel" id="transactions">
+        <div class="panel-heading"><div><h2>Movimentações recentes</h2><p>Seus registros mais recentes.</p></div><button class="btn btn-dark" type="button" onclick="document.getElementById('new-transaction').scrollIntoView({behavior:'smooth'});document.getElementById('description').focus()">＋ Nova movimentação</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Tipo</th><th class="align-right">Valor</th><th></th></tr></thead><tbody>
+          {% for t in transactions %}<tr><td><div class="transaction-name"><span class="transaction-icon {% if t.kind == 'income' %}income-bg{% else %}expense-bg{% endif %}">{% if t.kind == 'income' %}↙{% else %}↗{% endif %}</span><strong>{{ t.description }}</strong></div></td><td><span class="category-tag">{{ t.category }}</span></td><td>{{ t.transaction_date }}</td><td><span class="type-label {% if t.kind == 'income' %}income-text{% else %}expense-text{% endif %}">{% if t.kind == 'income' %}Receita{% else %}Despesa{% endif %}</span></td><td class="align-right amount {% if t.kind == 'income' %}income-text{% else %}expense-text{% endif %}">{% if t.kind == 'income' %}+{% else %}−{% endif %} {{ t.amount_cents|brl }}</td><td><form action="{{ url_for('delete_transaction', transaction_id=t.id) }}" method="post" onsubmit="return confirm('Excluir esta movimentação?')"><button class="icon-button" type="submit" title="Excluir movimentação" aria-label="Excluir {{ t.description }}">×</button></form></td></tr>
+          {% else %}<tr><td colspan="6" class="empty-state">Nenhuma movimentação cadastrada.</td></tr>{% endfor %}
+        </tbody></table></div>
+        <details class="inline-form" id="new-transaction"><summary>＋ Cadastrar receita ou despesa</summary><form action="{{ url_for('add_transaction') }}" method="post" class="form-grid transaction-form"><label>Descrição<input id="description" name="description" placeholder="Ex.: Almoço" required maxlength="100"></label><label>Valor (R$)<input name="amount" inputmode="decimal" placeholder="25,50" required></label><label>Tipo<select name="kind" required><option value="expense">Despesa</option><option value="income">Receita</option></select></label><label>Categoria<select name="category" required>{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></label><label>Data<input type="date" name="transaction_date" value="{{ today }}" required></label><button class="btn btn-dark" type="submit">Salvar movimentação</button></form></details>
+      </section>
+      <footer class="page-footer">Demo acadêmica • Dados fictícios • Não conectada a contas bancárias</footer>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <div class="modal-overlay" id="transactionModal">
+    <section class="modal-card" role="dialog"
+             aria-modal="true" aria-labelledby="transactionTitle">
+
+        <button type="button" class="modal-close"
+                onclick="closeModal('transactionModal')">×</button>
+
+        <h2 id="transactionTitle">Nova despesa</h2>
+
+        <form action="{{ url_for('add_transaction') }}" method="post">
+            <input type="hidden" name="kind" id="transactionKind"
+                   value="expense">
+
+            <label>Descrição
+                <input name="description" maxlength="100" required>
+            </label>
+
+            <label>Valor (R$)
+                <input name="amount" inputmode="decimal"
+                       placeholder="0,00" required>
+            </label>
+
+            <label>Categoria
+                <select name="category" required>
+                    {% for category in categories %}
+                        <option value="{{ category }}">{{ category }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label>Data
+                <input type="date" name="transaction_date"
+                       value="{{ today }}" required>
+            </label>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline"
+                        onclick="closeModal('transactionModal')">
+                    Cancelar
+                </button>
+
+                <button type="submit" class="btn btn-dark"
+                        id="transactionSubmit">
+                    Salvar despesa
+                </button>
+            </div>
+        </form>
+    </section>
+</div>
+```html
+<!-- Modal para ajustar o saldo -->
+<div class="modal-overlay" id="balanceModal"
+     onclick="closeModalOutside(event, 'balanceModal')">
+
+  <section class="modal-card"
+           role="dialog"
+           aria-modal="true"
+           aria-labelledby="balanceTitle">
+
+    <button class="modal-close"
+            type="button"
+            onclick="closeModal('balanceModal')"
+            aria-label="Fechar">
+      ×
+    </button>
+
+    <p class="modal-eyebrow">AJUSTE DE SALDO</p>
+
+    <h2 id="balanceTitle">Ajustar saldo do mês</h2>
+
+    <p class="modal-description">
+      Informa o saldo final que pretendes ter.
+      O sistema registará a diferença como receita ou despesa.
+    </p>
+
+    <form action="{{ url_for('adjust_balance') }}"
+          method="post"
+          class="modal-form">
+
+      <label>
+        Saldo pretendido (R$)
+        <input type="text"
+               name="target_balance"
+               inputmode="decimal"
+               placeholder="Ex.: 895,00"
+               required>
+      </label>
+
+      <p class="modal-hint">
+        A diferença será registada no histórico financeiro.
+      </p>
+
+      <div class="modal-actions">
+
+        <button class="btn btn-outline"
+                type="button"
+                onclick="closeModal('balanceModal')">
+          Cancelar
+        </button>
+
+        <button class="btn btn-dark" type="submit">
+          Confirmar ajuste
+        </button>
+
+      </div>
+    </form>
+  </section>
+</div>
+</body>
+</html>
